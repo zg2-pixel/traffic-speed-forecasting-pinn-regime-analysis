@@ -1,0 +1,42 @@
+{
+  "metadata": {
+    "data_path": "data/processed/traffic_clean.csv",
+    "train_end_date": "2025-01-22",
+    "val_end_date": "2025-01-25",
+    "event_definition": "Find a sustained low-speed/high-occupancy core, expand left/right through contiguous low-speed points, and label the transitions before/after the core as onset/recovery until speed returns to non-low-speed."
+  },
+  "thresholds_for_physics": {
+    "low_speed_threshold": 58.9,
+    "high_occ_threshold": 0.0856,
+    "exit_speed_threshold": 62.9,
+    "strong_rise_delta": 1.5,
+    "strong_drop_delta": 1.5
+  },
+  "event_detection_params": {
+    "core_window_steps": 4,
+    "max_transition_extension": 6,
+    "occ_relax_factor": 0.85
+  },
+  "regime_smoothness": {
+    "other_delta_v_q90": 1.6000000000000014,
+    "other_delta_v_q95": 2.0,
+    "onset_delta_v_q90": 4.8000000000000025,
+    "onset_delta_v_q95": 7.1999999999999975,
+    "congested_delta_v_q90": 3.960000000000002,
+    "congested_delta_v_q95": 6.529999999999996,
+    "recovery_delta_v_q90": 4.899999999999999,
+    "recovery_delta_v_q95": 6.899999999999999
+  },
+  "weights": {
+    "other": 1.0,
+    "onset": 2.77,
+    "congested": 7.033,
+    "recovery": 2.914
+  },
+  "notes": {
+    "recommended_event_labels_for_physics": [
+      "congestion",
+      "other"
+    ]
+  }
+}

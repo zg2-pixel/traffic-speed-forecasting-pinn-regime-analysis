@@ -1,75 +1,133 @@
-# Physics-Informed GRU for Short-Term Traffic Speed Forecasting
+# Traffic Speed Forecasting with Physics-Informed Neural Networks: A Regime-Dependent Analysis
 
-CEE 12-787 Physics-Informed Machine Learning — CMU Spring 2026
+A course project for CMU 12-787 (Physics-Informed Machine Learning) investigating when and where physics-informed regularization actually helps a GRU-based traffic speed forecaster, and when it does not.
 
 **Authors:** Zhaoyang Guo, Junchi Fan
 
-## Overview
+## Thesis
 
-This project develops a physics-informed GRU model for 30-minute traffic speed forecasting on I-880 Southbound (San Francisco Bay Area). Three physics-based constraints (acceleration limits, speed bounds, congestion-speed consistency) are incorporated as soft penalties in the training loss.
+Physics-informed losses are often presented as a universal improvement over pure data-driven models. Across four data regimes (dense standard-horizon, event-focused, long-horizon, sparse-sensor), we find that the benefit is strongly regime-dependent: soft physics penalties can be neutral or mildly harmful under abundant data, while carefully chosen regime-specific constraints provide substantial gains where data is thin. The practical takeaway: the form of physics injection must match the data regime, not the other way around.
 
-**Key results:**
+## Dataset
 
-| Model | RMSE (mph) | MAE (mph) |
-|-------|-----------|----------|
-| Baseline GRU | 4.10 | 2.26 |
-| Physics v1 (no warmup) | 4.69 | 3.09 |
-| Physics v2 (warmup) | **3.98** | **2.15** |
+PeMS 5-minute station data, I-880 Southbound (San Jose -> Fremont), January 2025. After quality filtering, 8 detectors are retained. Hourly weather is pulled from Open-Meteo and joined on the hour. See `preprocessing/raw_cleaning.py` for exact filter thresholds.
 
-## Setup
+The raw PeMS files are not included in this repository (too large, and subject to PeMS terms of use). They can be downloaded from the Caltrans PeMS portal and placed in `data/raw/`.
 
-1. Install dependencies:
-```
-pip install torch pandas numpy matplotlib scikit-learn
-```
-
-2. Processed data (`data/processed/traffic_clean.csv`) is included in this repo. If you want to reproduce from raw data:
-   - Register at https://pems.dot.ca.gov (free)
-   - Download: Data Clearinghouse → District 4, Station 5-Minute, January 2025 (31 files)
-   - Download: Station Metadata → `d04_text_meta_2025_01_15.txt`
-   - Place all files in `data/raw/`
-   - Run `python step1_preprocess.py`
-
-## Run
+## Repository Layout
 
 ```
-python step2_train_baseline.py    # Baseline GRU → outputs_baseline/
-python step3_physics_v1.py        # Physics v1 (fixed weights) → outputs_physics_v1/
-python step3_physics_v2.py        # Physics v2 (warmup) → outputs_physics_v2/
-```
-
-Each script reads from `data/processed/traffic_clean.csv` and saves results (loss curves, prediction plots, metrics) to its output folder.
-
-## Project Structure
-
-```
+.
+├── preprocessing/                      # Stage 1: clean raw data, label events
+│   ├── raw_cleaning.py                 # PeMS txt.gz -> traffic_clean.csv
+│   └── event_labeling.py               # traffic_clean.csv -> all_splits_with_regime_labels.csv
+│                                       #   (adds split column and phase labels)
+│
+├── baseline/                           # Pure data-driven models (no physics)
+│   ├── v1_simple.py                    # plain GRU, last-hidden head
+│   ├── v2_refactor.py                  # + early stopping + deepcopy
+│   ├── v3_attention.py                 # + temporal attention + LR scheduler
+│   ├── v4_final.py                     # tuned, main dense baseline
+│   ├── v5_residual.py                  # residual learning (LastSpeed), 5 seeds
+│   └── v6_event_focused.py             # event-regime baseline, 2 features, 5 seeds
+│
+├── physics/                            # Physics-informed variants
+│   ├── v1_flow_penalty.py              # soft penalties: acceleration + speed range + flow>450 -> v<=50
+│   ├── v2_occupancy_penalty.py         # same framework, occupancy indicator replaces flow
+│   ├── v3_greenshields_fd.py           # Greenshields fundamental diagram penalty
+│   ├── v4_perl.py                      # PERL: v_hat = v_phys(occ) + GRU_residual
+│   └── v5_event_focused.py             # 4 phase-aware losses (trend, onset, depth, recovery)
+│
+├── regime_study/                       # Cross-regime comparisons (baseline vs physics pairs)
+│   ├── long_horizon_baseline.py        # 120-min forecast, pure data
+│   ├── long_horizon_physics.py         # 120-min forecast, phase-aware physics
+│   ├── sparse_sensor_baseline.py       # train on 3 detectors, test on 5 held-out
+│   └── sparse_sensor_physics.py        # same split + phase-aware physics
+│
 ├── data/
-│   └── processed/
-│       └── traffic_clean.csv        # Cleaned traffic + weather data (included)
-├── step1_preprocess.py              # PeMS parsing + weather download + feature engineering
-├── step2_train_baseline.py          # Baseline GRU (MSE loss only)
-├── step3_physics_v1.py              # Physics-informed v1 (fixed λ, no warmup)
-├── step3_physics_v2.py              # Physics-informed v2 (reduced λ_cong + warmup)
+│   └── raw/                            # Put PeMS *.txt.gz files here (not in repo)
+│
+├── requirements.txt
+├── LICENSE
 └── README.md
 ```
 
-## Data
+Output folders (`baseline_output/`, `physics_output/`, `regime_study_output/`) are created automatically by each script and gitignored. Each experiment writes `metrics.txt`, a set of PNG plots, and (for the reference seed) `best_model.pt`.
 
-- **Traffic**: Caltrans PeMS District 4, January 2025, 5-minute intervals
-- **Stations**: 10 mainline detectors on I-880 Southbound (PM 5.2–17.3)
-- **Weather**: Open-Meteo Historical API (lat 37.46, lon -121.94)
-- **Split**: 22 days train / 3 days validation / 6 days test (chronological)
-- **Features**: avg_speed, total_flow, avg_occupancy, hour_sin/cos, dow_sin/cos, is_weekend, temperature, precipitation, wind_speed, weather_code
+## Installation
 
-## Model
+```bash
+git clone https://github.com/zg2-pixel/traffic-pinn-regime-analysis.git
+cd traffic-pinn-regime-analysis
+python -m venv venv
+source venv/bin/activate            # on Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-- **Architecture**: 2-layer GRU, hidden size 64, dropout 0.2
-- **Input**: 12 time steps (60 min) × 12 features
-- **Output**: 6 time steps (30 min) of avg_speed
-- **Physics constraints** (v2):
-  - Acceleration limit: |Δv| ≤ 15 mph per 5-min step
-  - Speed bounds: 0 ≤ v ≤ 85 mph
-  - Congestion-speed consistency: if flow > 180 veh/5min, speed ≤ 50 mph
-  - Warmup: epochs 0–10 data only, epochs 10–20 linear ramp-up of physics weights
+Tested with Python 3.10 and PyTorch 2.x. A GPU is helpful but not required; all scripts auto-detect CUDA, Apple MPS, or CPU.
 
+## Data Setup
 
+1. Download PeMS 5-minute station data for District 4 (Bay Area), January 2025, from the [Caltrans PeMS portal](https://pems.dot.ca.gov/).
+2. Place all `d04_text_station_5min_2025_01_*.txt.gz` files in `data/raw/`.
+3. Run preprocessing (takes ~1-2 min):
+   ```bash
+   python preprocessing/raw_cleaning.py
+   python preprocessing/event_labeling.py
+   ```
+   The second script also downloads hourly weather from Open-Meteo and writes `data/processed/all_splits_with_regime_labels.csv`, which every model script reads.
+
+## Running the Experiments
+
+Each script is self-contained. Train times are roughly 5-20 minutes per seed on a laptop GPU, longer on CPU.
+
+**Dense 30-min horizon** (main baseline and its physics variants):
+```bash
+python baseline/v4_final.py
+python physics/v1_flow_penalty.py
+python physics/v2_occupancy_penalty.py
+python physics/v3_greenshields_fd.py
+python physics/v4_perl.py
+```
+
+**Event-focused regime** (predicting during congestion onset / peak / recovery):
+```bash
+python baseline/v6_event_focused.py
+python physics/v5_event_focused.py
+```
+
+**Long-horizon regime** (120-min forecast):
+```bash
+python regime_study/long_horizon_baseline.py
+python regime_study/long_horizon_physics.py
+```
+
+**Sparse-sensor regime** (train on 3 detectors, test on 5 unseen):
+```bash
+python regime_study/sparse_sensor_baseline.py
+python regime_study/sparse_sensor_physics.py
+```
+
+Results for each run are written to a matching `*_output/` folder with a `metrics.txt` summary and diagnostic plots.
+
+## Key Findings (Summary)
+
+Full results and analysis are in the project report. In brief:
+
+- **Dense 30-min regime**: physics penalties (v1, v2, v3) are neutral or slightly worse than the tuned baseline. PERL (v4) improves overall RMSE, but a LastSpeed residual baseline matches it without any physics, indicating that the gain comes from the residual formulation rather than the Greenshields term.
+- **Event-focused regime**: phase-aware losses (v5) improve congested-phase RMSE substantially over the v6 data-only baseline. This is the clearest case where physics, tailored to the regime, helps.
+- **Long-horizon and sparse-sensor regimes**: the `regime_study/` experiments test whether the phase-aware design generalizes to other "data-thin" settings. Numbers are in `regime_study_output/*/metrics.txt` after running the four scripts.
+
+## License
+
+MIT License. See `LICENSE` for the full text.
+
+## Citation
+
+If you reference this codebase, please cite as:
+
+```
+Guo, Z., and Fan, J. (2025). Traffic Speed Forecasting with Physics-Informed
+Neural Networks: A Regime-Dependent Analysis. Course project, CMU 12-787.
+https://github.com/zg2-pixel/traffic-pinn-regime-analysis
+```
