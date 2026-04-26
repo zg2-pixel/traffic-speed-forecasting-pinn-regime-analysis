@@ -12,40 +12,44 @@ Physics-informed losses are often presented as a universal improvement over pure
 
 PeMS 5-minute station data, I-880 Southbound (San Jose -> Fremont), January 2025. After quality filtering, 8 detectors are retained. Hourly weather is pulled from Open-Meteo and joined on the hour. See `preprocessing/raw_cleaning.py` for exact filter thresholds.
 
-The raw PeMS files are not included in this repository (too large, and subject to PeMS terms of use). They can be downloaded from the Caltrans PeMS portal and placed in `data/raw/`.
+The raw PeMS `.txt.gz` files are **not** included in this repository (too large, and subject to PeMS terms of use). The **processed CSVs are included** (`data/processed/`) so the model scripts can be run without going back to PeMS. If you want to regenerate the processed data from scratch (for example, to tune the preprocessing thresholds), download the raw files from the Caltrans PeMS portal and place them in `data/raw/`, then re-run the preprocessing step below.
 
 ## Repository Layout
 
 ```
 .
-├── preprocessing/                      # Stage 1: clean raw data, label events
-│   ├── raw_cleaning.py                 # PeMS txt.gz -> traffic_clean.csv
-│   └── event_labeling.py               # traffic_clean.csv -> all_splits_with_regime_labels.csv
-│                                       #   (adds split column and phase labels)
+├── preprocessing/
+│   ├── raw_cleaning.py
+│   └── event_labeling.py
 │
-├── baseline/                           # Pure data-driven models (no physics)
-│   ├── v1_simple.py                    # plain GRU, last-hidden head
-│   ├── v2_refactor.py                  # + early stopping + deepcopy
-│   ├── v3_attention.py                 # + temporal attention + LR scheduler
-│   ├── v4_final.py                     # tuned, main dense baseline
-│   ├── v5_residual.py                  # residual learning (LastSpeed), 5 seeds
-│   └── v6_event_focused.py             # event-regime baseline, 2 features, 5 seeds
+├── baseline/
+│   ├── v1_simple.py
+│   ├── v2_refactor.py
+│   ├── v3_attention.py
+│   ├── v4_final.py
+│   ├── v5_residual.py
+│   └── v6_event_focused.py
 │
-├── physics/                            # Physics-informed variants
-│   ├── v1_flow_penalty.py              # soft penalties: acceleration + speed range + flow>450 -> v<=50
-│   ├── v2_occupancy_penalty.py         # same framework, occupancy indicator replaces flow
-│   ├── v3_greenshields_fd.py           # Greenshields fundamental diagram penalty
-│   ├── v4_perl.py                      # PERL: v_hat = v_phys(occ) + GRU_residual
-│   └── v5_event_focused.py             # 4 phase-aware losses (trend, onset, depth, recovery)
+├── physics/
+│   ├── v1_flow_penalty.py
+│   ├── v2_occupancy_penalty.py
+│   ├── v3_greenshields_fd.py
+│   ├── v4_perl.py
+│   └── v5_event_focused.py
 │
-├── regime_study/                       # Cross-regime comparisons (baseline vs physics pairs)
-│   ├── long_horizon_baseline.py        # 120-min forecast, pure data
-│   ├── long_horizon_physics.py         # 120-min forecast, phase-aware physics
-│   ├── sparse_sensor_baseline.py       # train on 3 detectors, test on 5 held-out
-│   └── sparse_sensor_physics.py        # same split + phase-aware physics
+├── regime_study/
+│   ├── long_horizon_baseline.py
+│   ├── long_horizon_physics.py
+│   ├── sparse_sensor_baseline.py
+│   └── sparse_sensor_physics.py
 │
 ├── data/
-│   └── raw/                            # Put PeMS *.txt.gz files here (not in repo)
+│   ├── raw/
+│   └── processed/
+│       ├── traffic_clean.csv
+│       ├── weather.csv
+│       ├── all_splits_with_regime_labels.csv
+│       └── event_labels/
 │
 ├── requirements.txt
 ├── LICENSE
@@ -67,6 +71,10 @@ pip install -r requirements.txt
 Tested with Python 3.10 and PyTorch 2.x. A GPU is helpful but not required; all scripts auto-detect CUDA, Apple MPS, or CPU.
 
 ## Data Setup
+
+The processed CSVs are already in `data/processed/`, so you can skip directly to "Running the Experiments" below.
+
+**Optional** — regenerate the processed data from raw PeMS files:
 
 1. Download PeMS 5-minute station data for District 4 (Bay Area), January 2025, from the [Caltrans PeMS portal](https://pems.dot.ca.gov/).
 2. Place all `d04_text_station_5min_2025_01_*.txt.gz` files in `data/raw/`.
